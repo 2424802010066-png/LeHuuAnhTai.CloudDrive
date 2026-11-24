@@ -1,6 +1,6 @@
 # LeHuuAnhTai.CloudDrive — Tự xây dựng và vận hành dịch vụ lưu trữ đám mây Nextcloud
 
-Đồ án giữa kỳ (bài cá nhân) học phần **Điện toán đám mây** — Trường Đại học Thủ Dầu Một, Viện Công nghệ số.
+Đồ án cuối kỳ (kết thúc học phần) **Điện toán đám mây** — Trường Đại học Thủ Dầu Một, Viện Công nghệ số.
 Sinh viên: **Lê Hữu Anh Tài – 2424802010066** · GVHD: ThS. Trần Nhật Nam.
 
 Dịch vụ **SaaS** lưu trữ tệp (Nextcloud) chạy trên hạ tầng ảo hóa **VMware ESXi 8**, 3 VPS Ubuntu 24.04, công bố ra
