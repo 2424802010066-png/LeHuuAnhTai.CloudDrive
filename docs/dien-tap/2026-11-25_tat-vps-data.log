@@ -1,0 +1,52 @@
+00:10:19 === BAT DAU QUAN SAT ===
+00:10:19 GATUS  DNS cloud.lehuuanhtai2424802010066.id.vn: OK 
+00:10:19 GATUS  Nextcloud (nội bộ, vùng dịch vụ): OK 
+00:10:19 GATUS  Nextcloud (truy cập công khai): OK 
+00:10:19 GATUS  WebDAV (đồng bộ ứng dụng): OK 
+00:10:19 GATUS  Kho sao luu rest-server: OK 
+00:10:19 GATUS  PostgreSQL: OK 
+00:10:19 GATUS  Ping vps-app: OK 
+00:10:19 GATUS  Ping vps-data: OK 
+00:10:19 GATUS  vps-app-2424802010066: OK 
+00:10:19 GATUS  vps-data-2424802010066: OK 
+00:10:19 GATUS  vps-mon-2424802010066: OK 
+00:10:19 GATUS  Ban sao thu hai tren vps-mon: OK 
+00:10:19 GATUS  Sao luu hang dem: OK 
+00:10:19 NGUOI DUNG  https://cloud.lehuuanhtai2424802010066.id.vn/status.php: LOI HTTPError: HTTP Error 403: Forbidden (0.2 s)
+00:10:26 SU KIEN  T0: tat vps-data (systemctl poweroff) - gia lap quan tri vien tat nham may
+00:10:39 === KET THUC QUAN SAT ===
+00:10:45 === BAT DAU QUAN SAT ===
+00:10:45 GATUS  DNS cloud.lehuuanhtai2424802010066.id.vn: OK 
+00:10:45 GATUS  Nextcloud (nội bộ, vùng dịch vụ): OK 
+00:10:45 GATUS  Nextcloud (truy cập công khai): OK 
+00:10:45 GATUS  WebDAV (đồng bộ ứng dụng): OK 
+00:10:45 GATUS  Kho sao luu rest-server: OK 
+00:10:45 GATUS  PostgreSQL: OK 
+00:10:45 GATUS  Ping vps-app: OK 
+00:10:45 GATUS  Ping vps-data: OK 
+00:10:45 GATUS  vps-app-2424802010066: OK 
+00:10:45 GATUS  vps-data-2424802010066: OK 
+00:10:45 GATUS  vps-mon-2424802010066: OK 
+00:10:45 GATUS  Ban sao thu hai tren vps-mon: OK 
+00:10:45 GATUS  Sao luu hang dem: OK 
+00:10:55 NGUOI DUNG  https://cloud.lehuuanhtai2424802010066.id.vn/status.php: LOI TimeoutError: The read operation timed out (10.1 s)
+00:11:20 GATUS  Nextcloud (nội bộ, vùng dịch vụ): LOI ([STATUS] (0) == 200;[BODY].installed (INVALID) == true;[BODY].maintenance (INVALID) == false;[RESPONSE_TIME] (10000) < 1)
+00:11:20 GATUS  Nextcloud (truy cập công khai): LOI ([STATUS] (0) == 200;[BODY].installed (INVALID) == true;[BODY].maintenance (INVALID) == false;[RESPONSE_TIME] (10001) < 5)
+00:11:20 GATUS  Ping vps-data: LOI ([CONNECTED] (false) == true)
+00:12:21 GATUS  WebDAV (đồng bộ ứng dụng): LOI ([STATUS] (0) == 401)
+00:13:44 SU KIEN  T1: canh bao Telegram dau tien luc 00:13:06 (Gatus log 17:13:06 UTC), 3 canh bao: Nextcloud cong khai, Nextcloud noi bo, Ping vps-data
+00:13:45 SU KIEN  CHAN DOAN: Ping vps-data LOI + app/mon van song -> loi o may du lieu; ESXi: vps-data 'Powered off'
+00:13:45 SU KIEN  T2: bat lai vps-data (vim-cmd vmsvc/power.on 3)
+00:14:06 NGUOI DUNG  https://cloud.lehuuanhtai2424802010066.id.vn/status.php: OK (0.2 s)
+00:14:11 GATUS  Nextcloud (nội bộ, vùng dịch vụ): OK 
+00:14:11 GATUS  Nextcloud (truy cập công khai): OK 
+00:14:11 GATUS  WebDAV (đồng bộ ứng dụng): OK 
+00:14:11 GATUS  Kho sao luu rest-server: LOI (heartbeat: no update received within 3m0s)
+00:14:11 GATUS  PostgreSQL: LOI (heartbeat: no update received within 3m0s)
+00:14:11 GATUS  Ping vps-data: OK 
+00:14:11 GATUS  vps-data-2424802010066: LOI (heartbeat: no update received within 3m0s)
+00:14:53 GATUS  Kho sao luu rest-server: OK 
+00:14:53 GATUS  PostgreSQL: OK 
+00:14:53 GATUS  vps-data-2424802010066: OK 
+00:15:55 SU KIEN  T3: Gatus gui 3 tin 'da khoi phuc' luc 00:15:06; 3 heartbeat cua vps-data het loi luc 00:14:53 (chua du 3 lan loi -> khong bao dong gia)
+00:16:00 === KET THUC QUAN SAT ===

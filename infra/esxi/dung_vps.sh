@@ -43,4 +43,19 @@ echo "== Bật các VPS (data trước)"
 for TEN in vps-data-2424802010066 vps-app-2424802010066 vps-mon-2424802010066; do
   ssh "${SSHO[@]}" "$ESXI" "id=\$(vim-cmd vmsvc/getallvms | awk '\$2==\"$TEN\"{print \$1}'); vim-cmd vmsvc/power.getstate \$id | grep -q 'Powered on' || vim-cmd vmsvc/power.on \$id"
 done
+
+# Bài học từ diễn tập sự cố 25/11/2026 (docs/POSTMORTEM.md): ESXi khởi động lại thì VPS phải tự bật,
+# đúng thứ tự phụ thuộc: data (CSDL) -> app (Nextcloud cần CSDL) -> mon. Tắt host thì làm ngược lại.
+echo "== Tự khởi động cùng ESXi (data -> app -> mon)"
+ssh "${SSHO[@]}" "$ESXI" sh -s <<'EOF'
+vim-cmd hostsvc/autostartmanager/enable_autostart true >/dev/null
+thu_tu=1
+for TEN in vps-data-2424802010066 vps-app-2424802010066 vps-mon-2424802010066; do
+  id=$(vim-cmd vmsvc/getallvms | awk -v t="$TEN" '$2==t{print $1}')
+  # PowerOn, chờ 60 s rồi mới bật máy kế tiếp; tắt host: guestShutdown (open-vm-tools), tối đa 120 s
+  vim-cmd hostsvc/autostartmanager/update_autostartentry "$id" PowerOn 60 "$thu_tu" guestShutdown 120 systemDefault >/dev/null
+  thu_tu=$((thu_tu+1))
+done
+vim-cmd hostsvc/autostartmanager/get_autostartseq | grep -E 'key|startOrder|startAction'
+EOF
 ssh "${SSHO[@]}" "$ESXI" "vim-cmd vmsvc/getallvms"
