@@ -58,7 +58,7 @@ deploy_user: "deploy"
 
 # Giai đoạn dựng ban đầu: cho phép SSH từ laptop. Xong thì đặt false để
 # SSH chỉ còn đi qua Tailscale.
-lab_bootstrap: true
+lab_bootstrap: false
 
 # ---------------- Phiên bản phần mềm (ghim cố định) ----------------
 nextcloud_image: "nextcloud:34-apache"
