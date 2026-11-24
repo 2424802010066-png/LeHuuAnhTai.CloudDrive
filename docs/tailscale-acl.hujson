@@ -1,0 +1,14 @@
+// Đoạn ACL Tailscale cần GỘP vào policy của tailnet (Access controls) — Lê Hữu Anh Tài 2424802010066
+// 3 VPS gắn tag:doan-server (máy chủ, không hết hạn khóa); chỉ quản trị viên tailnet được vào đúng các cổng quản trị.
+{
+  "tagOwners": {
+    "tag:doan-server": ["autogroup:admin"],
+  },
+  "acls": [
+    // Quản trị viên -> SSH, HTTPS quản trị Nextcloud, Gatus
+    {"action": "accept", "src": ["autogroup:admin"], "dst": ["tag:doan-server:22,80,443,8080"]},
+  ],
+  "tests": [
+    {"src": "autogroup:admin", "accept": ["tag:doan-server:22", "tag:doan-server:443"], "deny": ["tag:doan-server:5432"]},
+  ],
+}
