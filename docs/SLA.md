@@ -12,9 +12,14 @@ Hiệu lực: từ 25/11/2026 đến hết đợt chấm đồ án học phần 
 
 | Chỉ số (SLI) | Cách đo | Mục tiêu (SLO) |
 |---|---|---|
-| Độ sẵn sàng | Gatus gọi `https://cloud.<tên-miền>/status.php` mỗi 60 s; thành công khi HTTP 200, `installed=true`, `maintenance=false` | **≥ 99,5 %** mỗi 30 ngày (≤ 3 giờ 36 phút gián đoạn) |
-| Thời gian phản hồi | Thời gian của chính phép kiểm tra trên | **< 1,5 s** (đi qua Internet) |
+| Độ sẵn sàng | Gatus gọi `https://cloud.<tên-miền>/status.php` qua Internet mỗi 60 s; thành công khi HTTP 200, `installed=true`, `maintenance=false`, chứng chỉ còn > 7 ngày và trả lời trong 5 s | **≥ 99,5 %** mỗi 30 ngày (≤ 3 giờ 36 phút gián đoạn) |
+| Thời gian phản hồi | Gatus gọi `status.php` ngay tại máy chủ (vùng dịch vụ, mỗi 60 s): đo thời gian xử lý của nginx → Nextcloud → PostgreSQL/Redis | **< 1,5 s** (cảnh báo sớm ở 1 s) |
 | Sao lưu | Bản sao lưu đêm đẩy kết quả về Gatus | **100 %** số đêm có bản sao lưu thành công |
+
+Vì sao không lấy thời gian đo qua Internet làm SLO độ trễ: máy đo đặt chung mạng với máy chủ, khi gói SYN tới Cloudflare
+bị rớt thì riêng việc bắt tay TCP/TLS đã mất thêm 1, 3 hoặc 7 s. Đo ngày 24/11/2026 cho thấy điều này xảy ra cả từ laptop
+lẫn từ VPS, dù máy chủ chỉ cần khoảng 0,1–0,2 s để trả lời. Đó là đường mạng của người dùng, nằm ngoài phạm vi
+nhà cung cấp kiểm soát (xem dòng dưới).
 
 Không tính vào thời gian gián đoạn: cửa sổ bảo trì định kỳ (mục 3), sự cố do Cloudflare/nhà mạng của người dùng.
 

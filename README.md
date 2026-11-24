@@ -54,7 +54,10 @@ và `vSwitch-VPS` + port group `VPS-Net-2424802010066`; khóa SSH root của ESX
    ```
 4. **VPN quản trị:** trên mỗi VPS `sudo tailscale up --hostname <tên-vps>` rồi duyệt trong trang quản trị Tailscale
    (ACL mẫu: `docs/tailscale-acl.hujson`); chạy lại `ansible-playbook site.yml --tags app` để xin chứng chỉ `tailscale cert`.
-5. **Tên miền + Cloudflare Tunnel:** thêm tên miền vào Cloudflare, rồi trên máy quản trị:
+5. **Tên miền + Cloudflare Tunnel:** thêm tên miền vào Cloudflare (gói Free), xóa các bản ghi email mặc định mà
+   Cloudflare quét được từ nhà đăng ký (tên miền này không dùng email), đổi nameserver ở nhà đăng ký (Mắt Bão → Name Server
+   tùy chỉnh) sang 2 nameserver Cloudflare cấp, thêm TXT `@` = `v=spf1 -all` và `_dmarc` = `v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s`
+   (cấm mạo danh tên miền gửi thư). Rồi trên máy quản trị:
    ```bash
    cloudflared tunnel login
    cloudflared tunnel create nextcloud-2424802010066

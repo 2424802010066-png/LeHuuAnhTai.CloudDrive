@@ -43,6 +43,10 @@ alerting:
 endpoints:
 {% if domain_ready %}
   # ---------- Người dùng nhìn thấy (đi qua Cloudflare -> Tunnel -> nginx -> Nextcloud) ----------
+  # SLI ĐỘ SẴN SÀNG (hộp đen). Ngưỡng thời gian ở đây chỉ để bắt trường hợp "treo" (> 5 s coi như
+  # không dùng được), KHÔNG phải SLO độ trễ: máy đo đặt cùng mạng nhà nên lần nào gói SYN tới
+  # Cloudflare bị rớt là cộng thêm 1/3/7 s (đã đo ngày 24/11/2026, cả từ laptop lẫn từ VPS) ->
+  # đặt 1,5 s ở đây sẽ báo động giả. SLO độ trễ đo ở phép kiểm tra NỘI BỘ bên dưới.
   - name: "Nextcloud (truy cập công khai)"
     group: "Dich vu Nextcloud"
     url: "https://{{ cloud_host }}/status.php"
@@ -51,7 +55,7 @@ endpoints:
       - "[STATUS] == 200"
       - "[BODY].installed == true"
       - "[BODY].maintenance == false"
-      - "[RESPONSE_TIME] < 1500"
+      - "[RESPONSE_TIME] < 5000"
       - "[CERTIFICATE_EXPIRATION] > 168h"
 {% if tg %}
     alerts: [{ type: telegram, description: "Nextcloud công khai không đạt (HTTP/maintenance/chậm/TLS)" }]
@@ -79,6 +83,8 @@ endpoints:
 {% endif %}
 
   # ---------- Bên trong (tách lỗi tunnel với lỗi ứng dụng) ----------
+  # SLI ĐỘ TRỄ: thời gian máy chủ trả status.php (nginx -> Nextcloud -> PostgreSQL/Redis),
+  # không lẫn đường mạng của người dùng. SLO < 1,5 s; báo động sớm ở 1 s.
   - name: "Nextcloud (nội bộ, vùng dịch vụ)"
     group: "Dich vu Nextcloud"
     url: "http://{{ vps.app.service }}/status.php"
