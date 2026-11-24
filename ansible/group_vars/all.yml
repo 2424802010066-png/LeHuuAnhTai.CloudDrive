@@ -65,7 +65,7 @@ nextcloud_image: "nextcloud:34-apache"
 redis_image: "redis:7.4-alpine"
 postgres_image: "postgres:18-bookworm"
 rest_server_image: "restic/rest-server:0.15.0"
-gatus_image: "twinproto/gatus:v5.38.0"
+gatus_image: "ghcr.io/twin/gatus:v5.38.0"
 
 # ---------------- Nextcloud ----------------
 nc_admin_user: "qtv-anhtai"
