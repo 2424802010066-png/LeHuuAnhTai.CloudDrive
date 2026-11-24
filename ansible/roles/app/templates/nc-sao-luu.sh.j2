@@ -30,7 +30,7 @@ BUOC="bat che do bao tri"
 occ maintenance:mode --on
 
 BUOC="pg_dump"
-docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=require {{ postgres_image }} \
+docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/ca.crt -v /opt/nextcloud/pg-root.crt:/ca.crt:ro {{ postgres_image }} \
   pg_dump -h {{ vps.data.data }} -U {{ nc_db_user }} -d {{ nc_db_name }} -Fc \
   > /srv/backup-staging/nextcloud-db.dump
 echo "pg_dump: $(du -h /srv/backup-staging/nextcloud-db.dump | cut -f1)"

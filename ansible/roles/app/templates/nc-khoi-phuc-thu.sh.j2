@@ -26,7 +26,7 @@ for i in $(seq 1 30); do docker exec pg-khoi-phuc pg_isready -q -U {{ nc_db_user
 sleep 2
 docker exec -i pg-khoi-phuc pg_restore -U {{ nc_db_user }} -d {{ nc_db_name }} --no-owner < "$DICH/srv/backup-staging/nextcloud-db.dump"
 dem_tam=$(docker exec pg-khoi-phuc psql -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_accounts")
-dem_that=$(docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=require {{ postgres_image }} psql -h {{ vps.data.data }} -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_accounts")
+dem_that=$(docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=verify-full -e PGSSLROOTCERT=/ca.crt -v /opt/nextcloud/pg-root.crt:/ca.crt:ro {{ postgres_image }} psql -h {{ vps.data.data }} -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_accounts")
 tep_tam=$(docker exec pg-khoi-phuc psql -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_filecache")
 echo "   Số tài khoản: bản khôi phục = $dem_tam, đang chạy = $dem_that"
 echo "   Số bản ghi oc_filecache trong bản khôi phục: $tep_tam"

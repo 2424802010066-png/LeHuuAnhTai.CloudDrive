@@ -136,6 +136,12 @@
   notify: restart fail2ban
 
 # ---- Docker Compose: Nextcloud + Redis + cron ----
+- name: Chứng chỉ của PostgreSQL (vps-data) làm "root CA" để xác minh máy chủ CSDL
+  ansible.builtin.copy:
+    dest: /opt/nextcloud/pg-root.crt
+    content: "{{ hostvars[groups['data'][0]].pg_cert.content | b64decode }}"
+    mode: "0644"
+
 - name: File compose + bí mật (.env 0600)
   ansible.builtin.template:
     src: "{{ item.s }}"

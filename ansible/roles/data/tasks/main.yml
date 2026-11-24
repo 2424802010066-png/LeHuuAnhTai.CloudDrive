@@ -74,6 +74,11 @@
     src: /etc/ssl/doan/rest/server.crt
   register: rest_cert
 
+- name: Đọc chứng chỉ PostgreSQL để Nextcloud xác minh máy chủ CSDL (sslmode=verify-full)
+  ansible.builtin.slurp:
+    src: /etc/ssl/doan/postgres/server.crt
+  register: pg_cert
+
 # ---- Docker Compose ----
 - name: File compose, pg_hba và biến môi trường
   ansible.builtin.template:

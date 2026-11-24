@@ -14,7 +14,11 @@ services:
       POSTGRES_HOST: "{{ vps.data.data }}:5432"
       POSTGRES_DB: "{{ nc_db_name }}"
       POSTGRES_USER: "{{ nc_db_user }}"
-      PGSSLMODE: require                 # libpq: bắt buộc mã hóa TLS tới PostgreSQL
+      # libpq: bắt buộc TLS + xác minh chứng chỉ và IP của máy chủ CSDL (chống giả mạo trung gian)
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /etc/pg-ca/root.crt
+      PGSSLCERT: /var/www/.postgresql/khong-dung.crt   # không dùng chứng chỉ client; tránh libpq đọc /root
+      PGSSLKEY: /var/www/.postgresql/khong-dung.key
       REDIS_HOST: redis
       NEXTCLOUD_TRUSTED_DOMAINS: "{{ cloud_host }} {{ vps.app.service }} {{ inventory_hostname }}.{{ tailnet_suffix }} localhost"
       TRUSTED_PROXIES: "{{ nc_docker_gateway }}"
@@ -25,6 +29,7 @@ services:
       TZ: "{{ tz }}"
     volumes:
       - /srv/nextcloud/html:/var/www/html
+      - /opt/nextcloud/pg-root.crt:/etc/pg-ca/root.crt:ro
     depends_on: [redis]
     networks: [ncnet]
     healthcheck:
@@ -41,10 +46,14 @@ services:
     entrypoint: /cron.sh               # tác vụ nền của Nextcloud chạy mỗi 5 phút
     env_file: .env
     environment:
-      PGSSLMODE: require
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /etc/pg-ca/root.crt
+      PGSSLCERT: /var/www/.postgresql/khong-dung.crt
+      PGSSLKEY: /var/www/.postgresql/khong-dung.key
       TZ: "{{ tz }}"
     volumes:
       - /srv/nextcloud/html:/var/www/html
+      - /opt/nextcloud/pg-root.crt:/etc/pg-ca/root.crt:ro
     depends_on: [nextcloud]
     networks: [ncnet]
 
