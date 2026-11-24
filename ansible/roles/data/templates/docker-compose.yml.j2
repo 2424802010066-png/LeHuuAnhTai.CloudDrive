@@ -1,0 +1,60 @@
+# {{ ansible_managed }}
+# vps-data — Lê Hữu Anh Tài {{ mssv }}
+# Cả 2 dịch vụ chạy network_mode: host để ufw kiểm soát được cổng (cổng "publish" của Docker đi vòng qua ufw).
+name: data
+services:
+  postgres:
+    image: {{ postgres_image }}
+    container_name: postgres
+    network_mode: host
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-local=peer --auth-host=scram-sha-256 --data-checksums"
+    command:
+      - postgres
+      - -c
+      - listen_addresses={{ vps.data.data }},127.0.0.1
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/etc/postgresql/tls/server.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - log_connections=on
+      - -c
+      - log_disconnections=on
+    volumes:
+      - /srv/postgres:/var/lib/postgresql
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /etc/ssl/doan/postgres:/etc/postgresql/tls:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  rest-server:
+    image: {{ rest_server_image }}
+    container_name: rest-server
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DATA_DIRECTORY: /data
+      PASSWORD_FILE: /data/.htpasswd
+      # --append-only : client chỉ được THÊM bản sao lưu, không xóa/sửa được (chống ransomware)
+      # --private-repos: mỗi tài khoản chỉ thấy kho mang tên mình
+      OPTIONS: "--listen {{ vps.data.data }}:8000 --append-only --private-repos --tls --tls-cert /tls/server.crt --tls-key /tls/server.key"
+    volumes:
+      - /srv/backup/restic:/data
+      - /etc/ssl/doan/rest:/tls:ro

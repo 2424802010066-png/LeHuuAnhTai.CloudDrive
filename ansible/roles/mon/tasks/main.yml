@@ -1,0 +1,59 @@
+# Vai trò "mon": giám sát + cổng vào Internet + kho bản sao thứ hai + control node Ansible
+- name: Gói phục vụ giám sát / kiểm thử / Ansible
+  ansible.builtin.apt:
+    name: [nmap, ansible, git, sqlite3]
+    state: present
+
+- name: Thư mục Gatus
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop: [/opt/gatus, /opt/gatus/config, /opt/gatus/data]
+
+- name: Cấu hình Gatus (status page, SLO, cảnh báo Telegram) + compose + bí mật
+  ansible.builtin.template:
+    src: "{{ item.s }}"
+    dest: "{{ item.d }}"
+    mode: "{{ item.m }}"
+  loop:
+    - { s: gatus-config.yaml.j2, d: /opt/gatus/config/config.yaml, m: "0644" }
+    - { s: docker-compose.yml.j2, d: /opt/gatus/docker-compose.yml, m: "0644" }
+    - { s: env.j2, d: /opt/gatus/.env, m: "0600" }
+  register: gatus_files
+
+- name: Chạy Gatus
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: /opt/gatus
+  changed_when: false
+
+- name: Nạp lại Gatus khi cấu hình đổi
+  ansible.builtin.command:
+    cmd: docker compose restart gatus
+    chdir: /opt/gatus
+  when: gatus_files.changed
+
+# ---- Kho bản sao thứ hai (nhận rsync từ vps-data) ----
+- name: Tài khoản backupcopy (chỉ nhận rsync, không shell tương tác)
+  ansible.builtin.user:
+    name: backupcopy
+    comment: "Nhan ban sao sao luu tu vps-data"
+    shell: /bin/sh
+    password: "!"
+    home: /var/lib/backupcopy
+
+- name: Thư mục nhận bản sao (sau khi có user)
+  ansible.builtin.file:
+    path: /srv/backup-copy
+    state: directory
+    owner: backupcopy
+    group: backupcopy
+    mode: "0700"
+
+- name: Khóa của vps-data chỉ được chạy rrsync ghi vào /srv/backup-copy
+  ansible.posix.authorized_key:
+    user: backupcopy
+    key: "{{ hostvars[groups['data'][0]].backupcopy_key.public_key }}"
+    key_options: 'command="/usr/bin/rrsync -wo /srv/backup-copy",restrict'
+    exclusive: true

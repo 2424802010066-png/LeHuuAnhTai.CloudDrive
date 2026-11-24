@@ -1,0 +1,296 @@
+# Vai trò "common": nền tảng an toàn giống nhau cho cả 3 VPS (mục 6.2 và 6.6 của đề)
+- name: Đặt hostname có MSSV
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+
+- name: Múi giờ Việt Nam
+  community.general.timezone:
+    name: "{{ tz }}"
+
+- name: Khai báo tên các VPS trong /etc/hosts (đi qua vùng dữ liệu / dịch vụ)
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} DOAN-NEXTCLOUD {{ mssv }}"
+    block: |
+      {{ vps.app.data }}   {{ vps.app.name }}  vps-app
+      {{ vps.data.data }}  {{ vps.data.name }} vps-data
+      {{ vps.mon.data }}   {{ vps.mon.name }}  vps-mon
+
+- name: Cập nhật toàn bộ gói hệ điều hành
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: dist
+
+- name: Cài các gói nền tảng
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - fail2ban
+      - python3-systemd          # fail2ban đọc journald
+      - unattended-upgrades
+      - apt-listchanges
+      - needrestart
+      - open-vm-tools            # ESXi thấy IP, tắt máy ảo "mềm" được
+      - curl
+      - jq
+      - rsync
+      - htop
+      - ncdu
+      - restic
+      - apache2-utils            # htpasswd
+      - ca-certificates
+      - gnupg
+    state: present
+
+# ---- Tắt / gỡ dịch vụ không dùng (giảm bề mặt tấn công) ----
+- name: Gỡ snapd (cloud image cài sẵn, hệ thống không dùng snap)
+  ansible.builtin.apt:
+    name: snapd
+    state: absent
+    purge: true
+
+- name: Tắt các dịch vụ không cần trên máy ảo
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: [multipathd.service, multipathd.socket, ModemManager.service, udisks2.service]
+  failed_when: false
+
+# ---- Vá bảo mật tự động ----
+- name: Bật unattended-upgrades (cập nhật danh sách + cài bản vá mỗi ngày)
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+- name: Cấu hình unattended-upgrades (khởi động lại trong cửa sổ bảo trì nếu cần)
+  ansible.builtin.template:
+    src: 52unattended-local.j2
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    mode: "0644"
+
+# ---- Tài khoản ----
+- name: Tài khoản quản trị riêng cho từng thành viên (sudo, chỉ khóa SSH)
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    comment: "{{ item.gecos }}"
+    groups: [sudo, adm]
+    append: true
+    shell: /bin/bash
+  loop: "{{ admins }}"
+
+- name: Khóa SSH công khai của thành viên
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ lookup('file', item.pubkey_file) }}"
+    exclusive: true
+  loop: "{{ admins }}"
+
+- name: Xóa quyền sudo KHÔNG mật khẩu tạm thời của giai đoạn cloud-init
+  ansible.builtin.file:
+    path: /etc/sudoers.d/90-trien-khai-tam
+    state: absent
+
+- name: Tài khoản dịch vụ deploy (Ansible) — không mật khẩu, chỉ khóa SSH
+  ansible.builtin.user:
+    name: "{{ deploy_user }}"
+    comment: "Ansible service account"
+    shell: /bin/bash
+    password: "!"
+    groups: []
+
+- name: deploy được sudo không cần mật khẩu (tài khoản máy, chỉ SSH được từ vps-mon)
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/80-deploy
+    mode: "0440"
+    content: "{{ deploy_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    validate: "visudo -cf %s"
+
+- name: Khóa SSH của tài khoản deploy (khóa riêng chỉ nằm trên vps-mon)
+  ansible.posix.authorized_key:
+    user: "{{ deploy_user }}"
+    key: "{{ lookup('file', 'files/deploy_ed25519.pub') }}"
+    exclusive: true
+
+# ---- SSH ----
+- name: Cấu hình SSH an toàn (chỉ khóa, cấm root, giới hạn người dùng)
+  ansible.builtin.template:
+    src: sshd-baomat.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-bao-mat-{{ mssv }}.conf
+    mode: "0644"
+    validate: "sshd -t -f %s"
+  notify: restart ssh
+
+- name: Bỏ file cloud-init cho phép mật khẩu SSH (nếu có)
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    state: absent
+  notify: restart ssh
+
+# ---- Nhân hệ điều hành ----
+- name: Tham số mạng an toàn cho nhân Linux
+  ansible.posix.sysctl:
+    name: "{{ item.k }}"
+    value: "{{ item.v }}"
+    sysctl_file: /etc/sysctl.d/90-bao-mat.conf
+    reload: true
+  loop:
+    - { k: net.ipv4.conf.all.rp_filter, v: "1" }
+    - { k: net.ipv4.conf.all.accept_redirects, v: "0" }
+    - { k: net.ipv4.conf.all.send_redirects, v: "0" }
+    - { k: net.ipv4.conf.all.accept_source_route, v: "0" }
+    - { k: net.ipv6.conf.all.accept_redirects, v: "0" }
+    - { k: net.ipv4.tcp_syncookies, v: "1" }
+    - { k: kernel.kptr_restrict, v: "2" }
+    - { k: kernel.dmesg_restrict, v: "1" }
+
+# ---- Fail2ban ----
+- name: Fail2ban bảo vệ SSH (đọc journald) + jail recidive cho kẻ tái phạm
+  ansible.builtin.template:
+    src: jail-common.local.j2
+    dest: /etc/fail2ban/jail.d/10-common.local
+    mode: "0644"
+  notify: restart fail2ban
+
+- name: Fail2ban chạy cùng hệ thống
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    enabled: true
+    state: started
+
+# ---- Tailscale (VPN quản trị) ----
+- name: Khóa ký gói Tailscale
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+
+- name: Kho gói Tailscale
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list
+    dest: /etc/apt/sources.list.d/tailscale.list
+    mode: "0644"
+
+- name: Cài Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    update_cache: true
+    state: present
+
+- name: tailscaled chạy cùng hệ thống
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    enabled: true
+    state: started
+
+# ---- Tường lửa lớp 2: ufw ----
+- name: ufw — chính sách mặc định (chặn vào, cho ra, chặn định tuyến)
+  community.general.ufw:
+    direction: "{{ item.d }}"
+    policy: "{{ item.p }}"
+  loop:
+    - { d: incoming, p: deny }
+    - { d: outgoing, p: allow }
+    - { d: routed, p: deny }
+
+- name: ufw — SSH chỉ qua VPN Tailscale
+  community.general.ufw:
+    rule: allow
+    interface: tailscale0
+    direction: in
+    port: "22"
+    proto: tcp
+    comment: "SSH quan tri chi qua VPN Tailscale"
+
+- name: ufw — SSH cho Ansible (deploy) từ control node vps-mon qua vùng dữ liệu
+  community.general.ufw:
+    rule: allow
+    interface: data0
+    direction: in
+    from_ip: "{{ vps.mon.data }}"
+    port: "22"
+    proto: tcp
+    comment: "Ansible control node vps-mon"
+
+- name: ufw — luật riêng của từng máy (có ghi lý do)
+  community.general.ufw:
+    rule: allow
+    interface: "{{ item.iface }}"
+    direction: in
+    from_ip: "{{ item.from }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ ufw_rules | default([]) }}"
+
+- name: ufw — đường SSH tạm thời từ laptop khi đang dựng (lab_bootstrap)
+  community.general.ufw:
+    rule: allow
+    delete: "{{ not lab_bootstrap }}"
+    interface: wan0
+    direction: in
+    from_ip: "{{ laptop_wan_ip }}"
+    port: "22"
+    proto: tcp
+    comment: "TAM: SSH tu laptop khi dung he thong"
+
+- name: ufw — bật tường lửa, ghi log mức thấp
+  community.general.ufw:
+    state: enabled
+    logging: "low"
+
+# ---- Đẩy tình trạng máy về Gatus mỗi phút ----
+- name: Script đẩy trạng thái + script kiểm tra sức khỏe máy
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    mode: "0755"
+  loop: [push-gatus.sh, kiem-tra-may.sh]
+
+- name: Thư mục kiểm tra bổ sung theo từng máy
+  ansible.builtin.file:
+    path: /etc/kiem-tra.d
+    state: directory
+    mode: "0755"
+
+- name: Biến môi trường đẩy trạng thái (token Gatus, chỉ root đọc)
+  ansible.builtin.template:
+    src: gatus-push.env.j2
+    dest: /etc/gatus-push.env
+    mode: "0600"
+
+- name: systemd service + timer kiểm tra sức khỏe máy
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [kiem-tra-may.service, kiem-tra-may.timer]
+  notify: reload systemd
+
+- name: Bật timer kiểm tra sức khỏe
+  ansible.builtin.systemd_service:
+    name: kiem-tra-may.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Thư mục cấu hình journald
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Giữ nhật ký journald qua các lần khởi động, giới hạn 300 MB
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/10-gioi-han.conf
+    mode: "0644"
+    content: |
+      [Journal]
+      Storage=persistent
+      SystemMaxUse=300M
+  notify: restart journald

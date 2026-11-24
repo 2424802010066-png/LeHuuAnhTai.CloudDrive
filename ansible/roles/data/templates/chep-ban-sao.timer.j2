@@ -1,0 +1,7 @@
+[Unit]
+Description=Chep ban sao sao luu hang dem luc {{ backup_copy_time }}
+[Timer]
+OnCalendar=*-*-* {{ backup_copy_time }}:00
+Persistent=true
+[Install]
+WantedBy=timers.target

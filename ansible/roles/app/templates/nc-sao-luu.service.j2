@@ -1,0 +1,8 @@
+[Unit]
+Description=Sao luu Nextcloud hang dem sang {{ vps.data.name }} (restic)
+After=docker.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nc-sao-luu.sh
+Nice=10
+IOSchedulingClass=idle

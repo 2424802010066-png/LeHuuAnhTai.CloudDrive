@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# SAO LƯU HẰNG ĐÊM ({{ backup_time }}) — Lê Hữu Anh Tài {{ mssv }}
+#   1. Bật chế độ bảo trì (dữ liệu đứng yên -> bản sao lưu nhất quán)
+#   2. pg_dump CSDL trên vps-data (qua TLS) bằng chính image PostgreSQL cùng phiên bản máy chủ
+#   3. restic backup: cấu hình + dữ liệu người dùng + bản dump -> kho trên vps-data
+#      (rest-server append-only, kênh TLS, dữ liệu được restic mã hóa AES-256 phía máy gửi)
+#   4. Tắt bảo trì, báo kết quả về Gatus (im lặng > 25 h cũng bị cảnh báo)
+set -Eeuo pipefail
+set -a; . /etc/nc-backup/env; set +a
+t0=$(date +%s)
+BUOC="khoi dong"
+occ() { docker exec -u www-data nextcloud php occ "$@"; }
+
+ket_thuc() {
+  rc=$?
+  occ maintenance:mode --off >/dev/null 2>&1 || true
+  rm -f /srv/backup-staging/nextcloud-db.dump
+  if [ $rc -eq 0 ]; then
+    /usr/local/bin/push-gatus.sh {{ gatus_keys.backup }} true "" "$(( $(date +%s)-t0 ))s"
+    echo "SAO LUU THANH CONG sau $(( $(date +%s)-t0 )) giay"
+  else
+    /usr/local/bin/push-gatus.sh {{ gatus_keys.backup }} false "sao luu loi o buoc: $BUOC (ma $rc)"
+    echo "SAO LUU THAT BAI o buoc: $BUOC (ma $rc)" >&2
+  fi
+}
+trap ket_thuc EXIT
+
+BUOC="bat che do bao tri"
+occ maintenance:mode --on
+
+BUOC="pg_dump"
+docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=require {{ postgres_image }} \
+  pg_dump -h {{ vps.data.data }} -U {{ nc_db_user }} -d {{ nc_db_name }} -Fc \
+  > /srv/backup-staging/nextcloud-db.dump
+echo "pg_dump: $(du -h /srv/backup-staging/nextcloud-db.dump | cut -f1)"
+
+BUOC="restic backup"
+restic backup --host {{ inventory_hostname }} --tag hang-dem \
+  /srv/nextcloud/html/config \
+  /srv/nextcloud/html/data \
+  /srv/nextcloud/html/custom_apps \
+  /srv/nextcloud/html/themes \
+  /srv/backup-staging \
+  --exclude '/srv/nextcloud/html/data/appdata_*/preview' \
+  --exclude '/srv/nextcloud/html/data/*/cache' \
+  --exclude '/srv/nextcloud/html/data/nextcloud.log*' \
+  --exclude '/srv/nextcloud/html/data/updater-*'
+
+BUOC="tat che do bao tri"
+occ maintenance:mode --off
+
+BUOC="liet ke ban sao luu"
+restic snapshots --latest 3 --compact

@@ -1,0 +1,6 @@
+[Unit]
+Description=Cap nhat ban va Nextcloud/Redis (docker compose pull)
+After=docker.service network-online.target nc-sao-luu.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/nc-cap-nhat.sh

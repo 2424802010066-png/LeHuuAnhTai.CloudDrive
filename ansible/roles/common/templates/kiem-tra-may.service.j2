@@ -1,0 +1,8 @@
+[Unit]
+Description=Kiem tra suc khoe {{ inventory_hostname }} va day ve Gatus
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/gatus-push.env
+ExecStart=/usr/local/bin/kiem-tra-may.sh

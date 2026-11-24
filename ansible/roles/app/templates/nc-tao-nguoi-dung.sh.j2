@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Tạo người dùng Nextcloud từ /opt/nextcloud/nguoi-dung.csv (ten;hien_thi;nhom;han_muc).
+# Mật khẩu sinh ngẫu nhiên (20 ký tự), chỉ ghi vào /root/nguoi-dung-moi.csv (0600) để bàn giao.
+# Người dùng đã tồn tại thì chỉ cập nhật nhóm + hạn mức. Lê Hữu Anh Tài - {{ mssv }}
+set -euo pipefail
+CSV=${1:-/opt/nextcloud/nguoi-dung.csv}
+OUT=/root/nguoi-dung-moi.csv
+umask 077
+[ -f "$OUT" ] || echo "ten_dang_nhap;mat_khau_khoi_tao;nhom;han_muc" > "$OUT"
+grep -v '^\s*#' "$CSV" | grep -v '^\s*$' | while IFS=';' read -r u ten nhom quota; do
+  if docker exec -u www-data nextcloud php occ user:info "$u" >/dev/null 2>&1; then
+    echo "-- $u đã có, cập nhật nhóm/hạn mức"
+  else
+    pw=$(openssl rand -base64 30 | tr -dc 'A-Za-z0-9' | head -c 20)
+    docker exec -e OC_PASS="$pw" -u www-data nextcloud php occ user:add --password-from-env \
+      --display-name "$ten" "$u" </dev/null >/dev/null
+    echo "$u;$pw;$nhom;$quota" >> "$OUT"
+    echo "++ đã tạo $u"
+  fi
+  docker exec -u www-data nextcloud php occ group:adduser "$nhom" "$u" </dev/null >/dev/null 2>&1 || true
+  docker exec -u www-data nextcloud php occ user:setting "$u" files quota "$quota" </dev/null
+done
+echo "Mật khẩu khởi tạo của người dùng MỚI nằm trong $OUT (chỉ root đọc). Bàn giao xong hãy xóa file."

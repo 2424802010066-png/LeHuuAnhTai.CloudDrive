@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Kiểm tra PostgreSQL và rest-server, đẩy kết quả về Gatus
+t0=$(date +%s%N)
+if docker exec postgres pg_isready -q -h {{ vps.data.data }} -U postgres; then
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.pg }} true "" "$(( ($(date +%s%N)-t0)/1000000 ))ms"
+else
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.pg }} false "pg_isready that bai"
+fi
+code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 --cacert /etc/ssl/doan/rest/server.crt https://{{ vps.data.data }}:8000/)
+if [ "$code" = "401" ]; then   # 401 = dịch vụ sống và đang đòi xác thực
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.rest }} true
+else
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.rest }} false "rest-server tra ve HTTP $code"
+fi

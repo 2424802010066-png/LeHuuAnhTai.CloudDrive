@@ -1,0 +1,22 @@
+# Docker Engine + Compose v2 từ kho Ubuntu (được unattended-upgrades vá bảo mật tự động)
+- name: Cài Docker + Compose
+  ansible.builtin.apt:
+    name: [docker.io, docker-compose-v2]
+    state: present
+
+- name: Cấu hình Docker daemon (xoay vòng log, live-restore)
+  ansible.builtin.copy:
+    src: daemon.json
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+  notify: restart docker
+
+- name: Docker chạy cùng hệ thống
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+# LƯU Ý BẢO MẬT: cổng "publish" của Docker đi vòng qua ufw (chuỗi DOCKER của iptables).
+# Vì vậy mọi dịch vụ cần mở ra mạng đều chạy network_mode: host (để ufw kiểm soát)
+# hoặc chỉ publish trên 127.0.0.1.

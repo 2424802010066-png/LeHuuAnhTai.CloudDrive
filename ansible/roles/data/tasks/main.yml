@@ -1,0 +1,158 @@
+# Vai trò "data": máy dữ liệu trong vùng DATA (không có đường vào từ Internet)
+#   - PostgreSQL 18 (chỉ nghe 192.168.250.22, bắt buộc TLS, chỉ cho vps-app)
+#   - rest-server: kho sao lưu restic, append-only (máy dịch vụ không xóa được bản sao lưu)
+#   - dọn bản sao lưu cũ hằng tuần + chép bản sao thứ hai sang vps-mon hằng đêm
+
+- name: Định dạng 2 đĩa dữ liệu (sdb = CSDL, sdc = sao lưu)
+  community.general.filesystem:
+    dev: "{{ item.dev }}"
+    fstype: ext4
+    opts: "-L {{ item.label }}"
+  loop:
+    - { dev: /dev/sdb, label: PGDATA }
+    - { dev: /dev/sdc, label: BACKUP }
+
+- name: Gắn đĩa vào /srv/postgres và /srv/backup
+  ansible.posix.mount:
+    path: "{{ item.path }}"
+    src: "LABEL={{ item.label }}"
+    fstype: ext4
+    opts: defaults,noatime
+    state: mounted
+  loop:
+    - { path: /srv/postgres, label: PGDATA }
+    - { path: /srv/backup, label: BACKUP }
+
+- name: Thư mục dịch vụ
+  ansible.builtin.file:
+    path: "{{ item.p }}"
+    state: directory
+    owner: "{{ item.o | default('root') }}"
+    group: "{{ item.o | default('root') }}"
+    mode: "{{ item.m | default('0750') }}"
+  loop:
+    - { p: /opt/data }
+    - { p: /srv/backup/restic, m: "0700" }
+    - { p: /etc/ssl/doan, m: "0755" }
+    - { p: /etc/ssl/doan/postgres, o: "999", m: "0750" }
+    - { p: /etc/ssl/doan/rest, m: "0750" }
+    - { p: /etc/restic, m: "0700" }
+
+# ---- Chứng chỉ TLS tự ký cho kênh nội bộ (CSDL và kho sao lưu) ----
+- name: Sinh chứng chỉ TLS tự ký (SAN = IP vùng dữ liệu) cho PostgreSQL và rest-server
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -newkey rsa:3072 -sha256 -days 1095 -nodes
+      -subj "/CN={{ inventory_hostname }}/O=DoAn Nextcloud {{ mssv }}"
+      -addext "subjectAltName=IP:{{ vps.data.data }},DNS:{{ inventory_hostname }}"
+      -keyout /etc/ssl/doan/{{ item }}/server.key -out /etc/ssl/doan/{{ item }}/server.crt
+    creates: "/etc/ssl/doan/{{ item }}/server.crt"
+  loop: [postgres, rest]
+
+- name: Khóa riêng của PostgreSQL thuộc uid 999 (postgres trong container), quyền 0600
+  ansible.builtin.file:
+    path: "/etc/ssl/doan/postgres/{{ item.f }}"
+    owner: "999"
+    group: "999"
+    mode: "{{ item.m }}"
+  loop: [{ f: server.key, m: "0600" }, { f: server.crt, m: "0644" }]
+
+- name: Đọc chứng chỉ rest-server để máy dịch vụ tin cậy (restic --cacert)
+  ansible.builtin.slurp:
+    src: /etc/ssl/doan/rest/server.crt
+  register: rest_cert
+
+# ---- Docker Compose ----
+- name: File compose, pg_hba và biến môi trường
+  ansible.builtin.template:
+    src: "{{ item.s }}"
+    dest: "/opt/data/{{ item.d }}"
+    mode: "{{ item.m }}"
+  loop:
+    - { s: docker-compose.yml.j2, d: docker-compose.yml, m: "0644" }
+    - { s: pg_hba.conf.j2, d: pg_hba.conf, m: "0644" }
+    - { s: env.j2, d: .env, m: "0600" }
+  register: data_files
+
+- name: htpasswd cho kho sao lưu (bcrypt; người dùng vps-app chỉ thấy kho của chính nó)
+  ansible.builtin.shell:
+    cmd: "htpasswd -B -i -c /srv/backup/restic/.htpasswd vps-app"
+    stdin: "{{ rest_server_password }}"
+    creates: /srv/backup/restic/.htpasswd
+  no_log: true
+
+- name: Chạy PostgreSQL + rest-server
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: /opt/data
+  register: up
+  changed_when: "'Started' in up.stderr or 'Recreated' in up.stderr"
+
+- name: Chờ PostgreSQL sẵn sàng
+  ansible.builtin.command: docker exec postgres pg_isready -h 127.0.0.1 -U postgres
+  register: ready
+  retries: 30
+  delay: 2
+  until: ready.rc == 0
+  changed_when: false
+
+- name: Tạo role + CSDL riêng cho Nextcloud (không phải superuser)
+  ansible.builtin.shell:
+    cmd: docker exec -i -u postgres postgres psql -v ON_ERROR_STOP=1 -q
+    stdin: |
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ nc_db_user }}') THEN
+          CREATE ROLE {{ nc_db_user }} LOGIN PASSWORD '{{ nc_db_password }}';
+        ELSE
+          ALTER ROLE {{ nc_db_user }} LOGIN PASSWORD '{{ nc_db_password }}';
+        END IF;
+      END $$;
+      SELECT 'CREATE DATABASE {{ nc_db_name }} OWNER {{ nc_db_user }} TEMPLATE template0 ENCODING ''UTF8'''
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{{ nc_db_name }}')\gexec
+      REVOKE ALL ON DATABASE {{ nc_db_name }} FROM PUBLIC;
+  changed_when: false
+  no_log: true
+
+# ---- Dọn bản sao lưu cũ (phía máy chủ, vì máy dịch vụ chỉ được ghi thêm) ----
+- name: Mật khẩu kho restic để dọn kho (chỉ root)
+  ansible.builtin.copy:
+    dest: /etc/restic/vps-app.pass
+    content: "{{ restic_password }}"
+    mode: "0600"
+  no_log: true
+
+# ---- Bản sao thứ hai sang vps-mon (rsync qua SSH, khóa bị giới hạn bằng rrsync) ----
+- name: Khóa SSH dùng để chép bản sao sang vps-mon
+  community.crypto.openssh_keypair:
+    path: /root/.ssh/backupcopy_ed25519
+    type: ed25519
+    comment: "backupcopy@{{ inventory_hostname }}"
+  register: backupcopy_key
+
+- name: Script dọn kho và chép bản sao
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/usr/local/sbin/{{ item }}"
+    mode: "0750"
+  loop: [don-sao-luu.sh, chep-ban-sao.sh]
+
+- name: Kiểm tra CSDL + kho sao lưu mỗi phút (đẩy về Gatus)
+  ansible.builtin.template:
+    src: csdl.sh.j2
+    dest: /etc/kiem-tra.d/csdl.sh
+    mode: "0750"
+
+- name: systemd service + timer (dọn kho Chủ nhật 03:00, chép bản sao hằng đêm)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [don-sao-luu.service, don-sao-luu.timer, chep-ban-sao.service, chep-ban-sao.timer]
+
+- name: Bật các timer
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: [don-sao-luu.timer, chep-ban-sao.timer]

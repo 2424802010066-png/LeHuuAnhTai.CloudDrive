@@ -1,0 +1,6 @@
+[Unit]
+Description=Chep ban sao kho sao luu sang {{ vps.mon.name }}
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/chep-ban-sao.sh

@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# Cloudflare Tunnel — connector trên {{ inventory_hostname }}
+tunnel: {{ cloudflare_tunnel_id }}
+credentials-file: /etc/cloudflared/{{ cloudflare_tunnel_id }}.json
+metrics: 127.0.0.1:20241
+no-autoupdate: true
+ingress:
+  # Người dùng -> Nextcloud (nginx trên vps-app, vùng dịch vụ)
+  - hostname: {{ cloud_host }}
+    service: http://{{ vps.app.service }}:80
+    originRequest:
+      connectTimeout: 10s
+      keepAliveTimeout: 90s
+  # Trang trạng thái công khai -> Gatus trên vps-mon
+  - hostname: {{ status_host }}
+    service: http://{{ vps.mon.service }}:{{ gatus_port }}
+  # Mọi tên khác: từ chối
+  - service: http_status:404

@@ -1,0 +1,126 @@
+# {{ ansible_managed }}
+# Gatus — trang trạng thái + giám sát + cảnh báo — Lê Hữu Anh Tài {{ mssv }}
+# SLO cam kết (docs/SLA.md): Nextcloud sẵn sàng >= 99,5 %/30 ngày; status.php phản hồi < 1,5 s.
+{% set tg = telegram_token | length > 0 %}
+web:
+  port: {{ gatus_port }}
+
+storage:
+  type: sqlite
+  path: /data/gatus.db          # lưu lịch sử -> tính được độ sẵn sàng 7 ngày / 30 ngày
+
+ui:
+  title: "Trạng thái dịch vụ — {{ nc_brand_name }}"
+  header: "{{ nc_brand_name }} · trạng thái dịch vụ"
+  description: "Trang trạng thái công khai — Đồ án Điện toán đám mây — Lê Hữu Anh Tài — MSSV {{ mssv }}"
+  dashboard-heading: "Tình trạng hệ thống {{ nc_brand_name }}"
+  dashboard-subheading: "SLO: Nextcloud sẵn sàng ≥ 99,5 % mỗi 30 ngày · bảo trì định kỳ 02:00–04:00 hằng ngày (giờ Việt Nam)"
+{% if domain_ready %}
+  link: "https://{{ cloud_host }}"
+  buttons:
+    - name: "Mở {{ nc_brand_name }}"
+      link: "https://{{ cloud_host }}"
+{% endif %}
+
+# Cửa sổ bảo trì: không gửi cảnh báo khi đang sao lưu / cập nhật (02:00–04:00)
+maintenance:
+  start: "02:00"
+  duration: 2h
+  timezone: "{{ tz }}"
+
+{% if tg %}
+alerting:
+  telegram:
+    token: "${TELEGRAM_TOKEN}"
+    id: "${TELEGRAM_CHAT_ID}"
+    default-alert:
+      enabled: true
+      failure-threshold: 3      # 3 lần hỏng liên tiếp mới báo (tránh báo nhầm)
+      success-threshold: 2      # 2 lần ổn liên tiếp mới báo "đã khôi phục"
+      send-on-resolved: true
+{% endif %}
+
+endpoints:
+{% if domain_ready %}
+  # ---------- Người dùng nhìn thấy (đi qua Cloudflare -> Tunnel -> nginx -> Nextcloud) ----------
+  - name: "Nextcloud (truy cập công khai)"
+    group: "Dich vu Nextcloud"
+    url: "https://{{ cloud_host }}/status.php"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].installed == true"
+      - "[BODY].maintenance == false"
+      - "[RESPONSE_TIME] < 1500"
+      - "[CERTIFICATE_EXPIRATION] > 168h"
+{% if tg %}
+    alerts: [{ type: telegram, description: "Nextcloud công khai không đạt (HTTP/maintenance/chậm/TLS)" }]
+{% endif %}
+
+  - name: "WebDAV (đồng bộ ứng dụng)"
+    group: "Dich vu Nextcloud"
+    url: "https://{{ cloud_host }}/remote.php/dav/"
+    interval: 120s
+    conditions:
+      - "[STATUS] == 401"      # 401 = WebDAV sống và đang đòi đăng nhập
+{% if tg %}
+    alerts: [{ type: telegram }]
+{% endif %}
+
+  - name: "DNS {{ cloud_host }}"
+    group: "Dich vu Nextcloud"
+    url: "1.1.1.1"
+    interval: 5m
+    dns:
+      query-name: "{{ cloud_host }}"
+      query-type: "A"
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+{% endif %}
+
+  # ---------- Bên trong (tách lỗi tunnel với lỗi ứng dụng) ----------
+  - name: "Nextcloud (nội bộ, vùng dịch vụ)"
+    group: "Dich vu Nextcloud"
+    url: "http://{{ vps.app.service }}/status.php"
+    headers:
+      Host: "{{ cloud_host }}"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].installed == true"
+      - "[BODY].maintenance == false"
+      - "[RESPONSE_TIME] < 1000"
+{% if tg %}
+    alerts: [{ type: telegram, description: "Nextcloud nội bộ lỗi (ứng dụng/CSDL/Redis)" }]
+{% endif %}
+
+  - name: "Ping vps-app"
+    group: "May chu"
+    url: "icmp://{{ vps.app.service }}"
+    interval: 60s
+    conditions: ["[CONNECTED] == true"]
+{% if tg %}
+    alerts: [{ type: telegram }]
+{% endif %}
+
+  - name: "Ping vps-data"
+    group: "May chu"
+    url: "icmp://{{ vps.data.data }}"
+    interval: 60s
+    conditions: ["[CONNECTED] == true"]
+{% if tg %}
+    alerts: [{ type: telegram, description: "Máy dữ liệu không phản hồi" }]
+{% endif %}
+
+# ---------- Kết quả do các máy tự đẩy về (heartbeat: im lặng quá lâu cũng là lỗi) ----------
+external-endpoints:
+{% for k, v in gatus_ext.items() %}
+  - name: "{{ v.name }}"
+    group: "{{ v.group }}"
+    token: "${GATUS_PUSH_TOKEN}"
+    heartbeat:
+      interval: {{ v.heartbeat }}
+{% if tg %}
+    alerts: [{ type: telegram }]
+{% endif %}
+{% endfor %}

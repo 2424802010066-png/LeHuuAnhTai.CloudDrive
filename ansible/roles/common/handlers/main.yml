@@ -1,0 +1,8 @@
+- name: restart ssh
+  ansible.builtin.systemd_service: { name: ssh, state: restarted }
+- name: restart fail2ban
+  ansible.builtin.systemd_service: { name: fail2ban, state: restarted }
+- name: reload systemd
+  ansible.builtin.systemd_service: { daemon_reload: true }
+- name: restart journald
+  ansible.builtin.systemd_service: { name: systemd-journald, state: restarted }

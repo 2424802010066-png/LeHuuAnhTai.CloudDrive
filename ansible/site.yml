@@ -1,0 +1,38 @@
+# Dựng lại TOÀN BỘ hệ thống từ 3 máy Ubuntu 24.04 trống (sau cloud-init):
+#   ansible-playbook site.yml
+# Chạy riêng một phần:  ansible-playbook site.yml --tags common | --limit data ...
+- name: Nền tảng chung cho mọi VPS (người dùng, SSH, ufw, fail2ban, vá tự động, Tailscale)
+  hosts: all
+  become: true
+  vars_files: [secrets.yml]
+  roles:
+    - { role: common, tags: [common] }
+    - { role: docker, tags: [docker] }
+
+- name: Máy dữ liệu — PostgreSQL + kho sao lưu restic (rest-server append-only)
+  hosts: data
+  become: true
+  vars_files: [secrets.yml]
+  roles:
+    - { role: data, tags: [data] }
+
+- name: Máy giám sát — Gatus (status page + Telegram), cloudflared, kho bản sao thứ 2
+  hosts: mon
+  become: true
+  vars_files: [secrets.yml]
+  roles:
+    - { role: mon, tags: [mon] }
+
+- name: Máy dịch vụ — Nextcloud + Redis + nginx + fail2ban + sao lưu hằng đêm
+  hosts: app
+  become: true
+  vars_files: [secrets.yml]
+  roles:
+    - { role: app, tags: [app] }
+
+- name: Cloudflare Tunnel — 2 connector (vps-mon chính, vps-app dự phòng), chỉ khi đã có tên miền
+  hosts: mon:app
+  become: true
+  vars_files: [secrets.yml]
+  roles:
+    - { role: cloudflared, tags: [cloudflared], when: "domain_ready and cloudflare_tunnel_id | length > 0" }

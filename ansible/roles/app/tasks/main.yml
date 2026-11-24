@@ -1,0 +1,211 @@
+# Vai trò "app": máy dịch vụ Nextcloud (vùng SERVICE + DATA)
+#   người dùng -> Cloudflare -> Tunnel -> nginx :80 (vps-app) -> Nextcloud (Apache, 127.0.0.1:8080)
+#   quản trị viên -> Tailscale -> nginx :443 (chứng chỉ tailscale cert) -> Nextcloud
+
+- name: Định dạng + gắn đĩa dữ liệu người dùng (sdb -> /srv)
+  community.general.filesystem:
+    dev: /dev/sdb
+    fstype: ext4
+    opts: "-L NCDATA"
+
+- name: Gắn /srv
+  ansible.posix.mount:
+    path: /srv
+    src: LABEL=NCDATA
+    fstype: ext4
+    opts: defaults,noatime
+    state: mounted
+
+- name: Thư mục dịch vụ
+  ansible.builtin.file:
+    path: "{{ item.p }}"
+    state: directory
+    owner: "{{ item.o | default('root') }}"
+    group: "{{ item.o | default('root') }}"
+    mode: "{{ item.m | default('0750') }}"
+  loop:
+    - { p: /opt/nextcloud }
+    - { p: /srv/nextcloud, m: "0755" }
+    - { p: /srv/nextcloud/html, o: "33", m: "0750" }   # 33 = www-data trong container
+    - { p: /srv/backup-staging, m: "0700" }
+    - { p: /etc/nc-backup, m: "0700" }
+    - { p: /etc/nginx/tls, m: "0750" }
+
+- name: Nextcloud đã cài chưa?
+  ansible.builtin.command: grep -q "'installed' => true" /srv/nextcloud/html/config/config.php
+  register: nc_installed_check
+  changed_when: false
+  failed_when: false
+
+- name: Ghi nhận trạng thái cài đặt
+  ansible.builtin.set_fact:
+    nc_installed: "{{ nc_installed_check.rc == 0 }}"
+
+# ---- nginx (reverse proxy) + fail2ban ----
+- name: Cài nginx + client PostgreSQL không cần (pg_dump chạy bằng image postgres)
+  ansible.builtin.apt:
+    name: [nginx]
+    state: present
+
+- name: Tailscale đã kết nối chưa? (để xin chứng chỉ HTTPS cho đường quản trị)
+  ansible.builtin.shell: tailscale status --json | jq -r .BackendState
+  register: ts_state
+  changed_when: false
+  failed_when: false
+
+- name: Xin / gia hạn chứng chỉ TLS cho tên máy trong tailnet (tailscale cert)
+  ansible.builtin.command: >-
+    tailscale cert --cert-file /etc/nginx/tls/ts.crt --key-file /etc/nginx/tls/ts.key
+    {{ inventory_hostname }}.{{ tailnet_suffix }}
+  when: ts_state.stdout == "Running"
+  register: ts_cert_cmd
+  changed_when: false
+  failed_when: false
+
+- name: Có chứng chỉ Tailscale chưa?
+  ansible.builtin.stat:
+    path: /etc/nginx/tls/ts.crt
+  register: ts_cert
+
+- name: Thư mục danh sách chặn của fail2ban cho nginx
+  ansible.builtin.file:
+    path: /etc/nginx/fail2ban
+    state: directory
+    mode: "0755"
+
+- name: File chặn rỗng ban đầu
+  ansible.builtin.copy:
+    dest: /etc/nginx/fail2ban/deny.conf
+    content: ""
+    force: false
+    mode: "0644"
+
+- name: Cấu hình nginx cho Nextcloud
+  ansible.builtin.template:
+    src: "{{ item.s }}"
+    dest: "{{ item.d }}"
+    mode: "0644"
+  loop:
+    - { s: nginx-nextcloud.conf.j2, d: /etc/nginx/sites-available/nextcloud }
+    - { s: nginx-proxy.conf.j2, d: /etc/nginx/snippets/nextcloud-proxy.conf }
+  notify: reload nginx
+
+- name: Bật site nextcloud, tắt site mặc định
+  ansible.builtin.file:
+    src: "{{ item.src | default(omit) }}"
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+  loop:
+    - { src: /etc/nginx/sites-available/nextcloud, path: /etc/nginx/sites-enabled/nextcloud, state: link }
+    - { path: /etc/nginx/sites-enabled/default, state: absent }
+  notify: reload nginx
+
+- name: Ẩn phiên bản nginx
+  ansible.builtin.copy:
+    dest: /etc/nginx/conf.d/10-an-phien-ban.conf
+    content: "server_tokens off;\n"
+    mode: "0644"
+  notify: reload nginx
+
+- name: Fail2ban — filter, action và jail cho trang đăng nhập Nextcloud
+  ansible.builtin.copy:
+    src: "{{ item.s }}"
+    dest: "{{ item.d }}"
+    mode: "0644"
+  loop:
+    - { s: f2b-filter-nextcloud.conf, d: /etc/fail2ban/filter.d/nextcloud.conf }
+    - { s: f2b-action-nginx-deny.conf, d: /etc/fail2ban/action.d/nginx-deny.conf }
+  notify: restart fail2ban
+
+- name: Jail nextcloud
+  ansible.builtin.template:
+    src: jail-nextcloud.local.j2
+    dest: /etc/fail2ban/jail.d/20-nextcloud.local
+    mode: "0644"
+  notify: restart fail2ban
+
+# ---- Docker Compose: Nextcloud + Redis + cron ----
+- name: File compose + bí mật (.env 0600)
+  ansible.builtin.template:
+    src: "{{ item.s }}"
+    dest: "/opt/nextcloud/{{ item.d }}"
+    mode: "{{ item.m }}"
+  loop:
+    - { s: docker-compose.yml.j2, d: docker-compose.yml, m: "0644" }
+    - { s: env.j2, d: .env, m: "0600" }
+  vars:
+    nc_admin_bootstrap: "{{ not nc_installed }}"
+
+- name: Chạy Nextcloud
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: /opt/nextcloud
+  changed_when: false
+
+- name: Script cấu hình Nextcloud (occ), tạo người dùng, sao lưu, khôi phục thử, cập nhật
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/usr/local/sbin/{{ item }}"
+    mode: "0750"
+  loop: [nc-cau-hinh.sh, nc-tao-nguoi-dung.sh, nc-sao-luu.sh, nc-khoi-phuc-thu.sh, nc-cap-nhat.sh]
+
+- name: Danh sách người dùng (không có mật khẩu — mật khẩu sinh ngẫu nhiên khi tạo)
+  ansible.builtin.copy:
+    src: nguoi-dung.csv
+    dest: /opt/nextcloud/nguoi-dung.csv
+    mode: "0640"
+
+- name: "Cấu hình Nextcloud bằng occ (idempotent: chạy lại nhiều lần vẫn ra cùng kết quả)"
+  ansible.builtin.command: /usr/local/sbin/nc-cau-hinh.sh
+  register: nc_cfg
+  changed_when: false
+
+- name: Bỏ mật khẩu admin khởi tạo khỏi .env sau khi cài xong
+  ansible.builtin.template:
+    src: env.j2
+    dest: /opt/nextcloud/.env
+    mode: "0600"
+  vars:
+    nc_admin_bootstrap: false
+
+# ---- Sao lưu hằng đêm sang vps-data ----
+- name: Chứng chỉ rest-server (vps-data) để restic xác thực TLS
+  ansible.builtin.copy:
+    dest: /etc/nc-backup/rest-server.crt
+    content: "{{ hostvars[groups['data'][0]].rest_cert.content | b64decode }}"
+    mode: "0644"
+
+- name: Biến môi trường sao lưu (bí mật, chỉ root)
+  ansible.builtin.template:
+    src: backup.env.j2
+    dest: /etc/nc-backup/env
+    mode: "0600"
+
+- name: Mật khẩu mã hóa kho restic
+  ansible.builtin.copy:
+    dest: /etc/nc-backup/restic.pass
+    content: "{{ restic_password }}"
+    mode: "0600"
+  no_log: true
+
+- name: Khởi tạo kho restic trên vps-data nếu chưa có
+  ansible.builtin.shell: |
+    set -a; . /etc/nc-backup/env; set +a
+    restic cat config >/dev/null 2>&1 || restic init
+  register: restic_init
+  changed_when: "'created restic repository' in restic_init.stdout"
+
+- name: systemd service + timer (sao lưu {{ backup_time }}, cập nhật image Chủ nhật 02:30)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [nc-sao-luu.service, nc-sao-luu.timer, nc-cap-nhat.service, nc-cap-nhat.timer, nc-cert-tailscale.service, nc-cert-tailscale.timer]
+
+- name: Bật các timer
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: [nc-sao-luu.timer, nc-cap-nhat.timer, nc-cert-tailscale.timer]

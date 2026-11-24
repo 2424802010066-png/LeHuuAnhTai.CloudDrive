@@ -1,0 +1,7 @@
+[Unit]
+Description=Gia han chung chi TLS Tailscale cho duong quan tri
+After=tailscaled.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/tailscale cert --cert-file /etc/nginx/tls/ts.crt --key-file /etc/nginx/tls/ts.key {{ inventory_hostname }}.{{ tailnet_suffix }}
+ExecStartPost=/usr/sbin/nginx -s reload

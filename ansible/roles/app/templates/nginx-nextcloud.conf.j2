@@ -1,0 +1,63 @@
+# {{ ansible_managed }}
+# nginx — reverse proxy trước Nextcloud trên {{ inventory_hostname }} (Lê Hữu Anh Tài {{ mssv }})
+upstream nextcloud_backend {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+# IP thật của người dùng: CHỈ tin header CF-Connecting-IP khi kết nối đến từ connector cloudflared.
+set_real_ip_from {{ vps.mon.service }};
+set_real_ip_from {{ vps.app.service }};
+real_ip_header CF-Connecting-IP;
+
+# Yêu cầu đi qua Cloudflare Tunnel -> người dùng đang dùng HTTPS (TLS kết thúc ở Cloudflare)
+geo $realip_remote_addr $qua_tunnel {
+    default 0;
+    {{ vps.mon.service }} 1;
+    {{ vps.app.service }} 1;
+}
+map $qua_tunnel $xfp     { 1 https; default $scheme; }
+map $xfp $hsts           { https "max-age=31536000; includeSubDomains"; default ""; }
+map $remote_addr $tu_vpn { "~^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\." 1; default 0; }
+
+log_format doan '$remote_addr (ket noi tu $realip_remote_addr) [$time_local] "$request" '
+                '$status $body_bytes_sent rt=$request_time "$http_user_agent"';
+
+server {
+    listen 80 default_server;
+    server_name {{ cloud_host }} {{ vps.app.service }};
+    access_log /var/log/nginx/nextcloud.access.log doan;
+
+    include /etc/nginx/fail2ban/deny.conf;     # IP bị fail2ban chặn (đăng nhập sai nhiều lần)
+{% if ts_cert.stat.exists %}
+
+    # Quản trị viên vào bằng IP Tailscale qua HTTP -> chuyển sang HTTPS
+    if ($tu_vpn) { return 301 https://{{ inventory_hostname }}.{{ tailnet_suffix }}$request_uri; }
+{% endif %}
+
+    location = /.well-known/carddav { return 301 $xfp://$host/remote.php/dav/; }
+    location = /.well-known/caldav  { return 301 $xfp://$host/remote.php/dav/; }
+    location / { include /etc/nginx/snippets/nextcloud-proxy.conf; }
+}
+{% if ts_cert.stat.exists %}
+
+# Đường QUẢN TRỊ: chỉ tới được qua VPN Tailscale (ufw chỉ mở 443 trên tailscale0)
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name {{ inventory_hostname }}.{{ tailnet_suffix }};
+    access_log /var/log/nginx/nextcloud-admin.access.log doan;
+
+    ssl_certificate     /etc/nginx/tls/ts.crt;
+    ssl_certificate_key /etc/nginx/tls/ts.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+
+    include /etc/nginx/fail2ban/deny.conf;
+
+    location = /.well-known/carddav { return 301 https://$host/remote.php/dav/; }
+    location = /.well-known/caldav  { return 301 https://$host/remote.php/dav/; }
+    location / { include /etc/nginx/snippets/nextcloud-proxy.conf; }
+}
+{% endif %}

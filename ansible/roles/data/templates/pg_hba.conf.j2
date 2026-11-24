@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# Chỉ Nextcloud trên vps-app ({{ vps.app.data }}) được vào CSDL nextcloud, BẮT BUỘC TLS.
+# TYPE      DATABASE        USER            ADDRESS                 METHOD
+local       all             postgres                                peer
+local       all             all                                     scram-sha-256
+host        all             all             127.0.0.1/32            scram-sha-256
+hostssl     {{ nc_db_name }}       {{ nc_db_user }}       {{ vps.app.data }}/32       scram-sha-256
+host        all             all             0.0.0.0/0               reject
+host        all             all             ::/0                    reject

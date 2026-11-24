@@ -1,0 +1,99 @@
+# =====================================================================
+#  Biến dùng chung cho cả 3 VPS — Đồ án Nextcloud — Lê Hữu Anh Tài 2424802010066
+#  KHÔNG chứa bí mật. Bí mật nằm ở ansible/secrets.yml (không đưa lên GitHub,
+#  có mẫu secrets.example.yml).
+# =====================================================================
+mssv: "2424802010066"
+tz: "Asia/Ho_Chi_Minh"
+
+# Tên miền id.vn của nhóm trưởng. Chưa có tên miền thì để domain_ready: false
+# -> bỏ qua Cloudflare Tunnel và các phép kiểm tra công khai trong Gatus.
+domain: "lehuuanhtai.id.vn"
+domain_ready: false
+cloud_host: "cloud.{{ domain }}"
+status_host: "status.{{ domain }}"
+
+# Tailscale (VPN quản trị). MagicDNS của tailnet:
+tailnet_suffix: "tail52c4f1.ts.net"
+vpn_cidr: "100.64.0.0/10"
+vpn_cidr6: "fd7a:115c:a1e0::/48"
+
+# ---------------- Mạng ----------------
+# WAN    : VM Network (vSwitch0 -> VMnet8 NAT của VMware) — chỉ dùng đi RA Internet
+# SERVICE: VPS-Net    (vSwitch-VPS -> VMnet1 host-only)   — vùng dịch vụ
+# DATA   : Data-Net   (vSwitch-Data, KHÔNG có uplink)     — vùng dữ liệu, cô lập
+net_wan: "192.168.119.0/24"
+net_service: "192.168.240.0/24"
+net_data: "192.168.250.0/24"
+wan_gateway: "192.168.119.2"
+dns_servers: ["192.168.119.2", "1.1.1.1"]
+laptop_wan_ip: "192.168.119.1"      # máy vật lý (VMnet8) — chỉ dùng lúc dựng ban đầu
+laptop_service_ip: "192.168.240.1"  # máy vật lý (VMnet1)
+
+vps:
+  app:
+    name: "vps-app-{{ mssv }}"
+    wan: "192.168.119.61"
+    service: "192.168.240.21"
+    data: "192.168.250.21"
+  data:
+    name: "vps-data-{{ mssv }}"
+    wan: "192.168.119.62"
+    data: "192.168.250.22"
+  mon:
+    name: "vps-mon-{{ mssv }}"
+    wan: "192.168.119.63"
+    service: "192.168.240.23"
+    data: "192.168.250.23"
+
+# ---------------- Tài khoản quản trị hệ điều hành ----------------
+# Mỗi thành viên một tài khoản sudo riêng, chỉ đăng nhập bằng khóa SSH.
+# (Đồ án do 1 sinh viên thực hiện nên chỉ có 1 tài khoản.)
+admins:
+  - name: anhtai
+    gecos: "Le Huu Anh Tai - {{ mssv }}"
+    pubkey_file: "files/anhtai.pub"
+# Tài khoản dịch vụ cho Ansible: chỉ khóa SSH, chỉ được SSH từ vps-mon (control node).
+deploy_user: "deploy"
+
+# Giai đoạn dựng ban đầu: cho phép SSH từ laptop. Xong thì đặt false để
+# SSH chỉ còn đi qua Tailscale.
+lab_bootstrap: true
+
+# ---------------- Phiên bản phần mềm (ghim cố định) ----------------
+nextcloud_image: "nextcloud:34-apache"
+redis_image: "redis:7.4-alpine"
+postgres_image: "postgres:18-bookworm"
+rest_server_image: "restic/rest-server:0.15.0"
+gatus_image: "twinproto/gatus:v5.38.0"
+
+# ---------------- Nextcloud ----------------
+nc_admin_user: "qtv-anhtai"
+nc_default_quota: "1 GB"
+nc_brand_name: "AnhTai Cloud Drive"
+nc_brand_slogan: "Lưu trữ đám mây cá nhân — SV Lê Hữu Anh Tài — MSSV {{ mssv }}"
+nc_docker_subnet: "172.30.21.0/24"
+nc_docker_gateway: "172.30.21.1"
+nc_db_name: "nextcloud"
+nc_db_user: "nextcloud"
+
+# ---------------- Sao lưu ----------------
+backup_time: "02:00"          # trong cửa sổ bảo trì 01:30–03:00 (xem SLA)
+backup_copy_time: "02:40"
+backup_keep: "--keep-daily 7 --keep-weekly 4 --keep-monthly 3"
+
+# ---------------- Giám sát ----------------
+gatus_port: 8080
+health_push_interval: "1min"
+
+# Các phép kiểm tra "đẩy về" Gatus (external endpoints). Gatus không giải mã URL
+# nên tên nhóm/tên phải là ASCII (không dấu). Khóa = nhom_ten (thường, ký tự " /_,.#+&" -> "-").
+gatus_ext:
+  may_app:     { group: "May chu", name: "vps-app-2424802010066",  heartbeat: "3m" }
+  may_data:    { group: "May chu", name: "vps-data-2424802010066", heartbeat: "3m" }
+  may_mon:     { group: "May chu", name: "vps-mon-2424802010066",  heartbeat: "3m" }
+  pg:          { group: "Du lieu", name: "PostgreSQL",              heartbeat: "3m" }
+  rest:        { group: "Du lieu", name: "Kho sao luu rest-server", heartbeat: "3m" }
+  backup:      { group: "Sao luu", name: "Sao luu hang dem",        heartbeat: "25h" }
+  backup_copy: { group: "Sao luu", name: "Ban sao thu hai tren vps-mon", heartbeat: "25h" }
+gatus_keys: "{{ dict(gatus_ext.keys() | zip(gatus_ext.values() | map(attribute='group') | map('lower') | map('regex_replace', '[ /_,.#+&]', '-') | zip(gatus_ext.values() | map(attribute='name') | map('lower') | map('regex_replace', '[ /_,.#+&]', '-')) | map('join', '_'))) }}"

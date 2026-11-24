@@ -1,0 +1,7 @@
+# Tường lửa lớp 2 (ufw) trên vps-app — mặc định CHẶN mọi kết nối vào.
+# Mỗi luật ghi rõ lý do (bảng 3.3 trong báo cáo).
+ufw_rules:
+  - { port: "80",  proto: tcp, from: "192.168.240.23", iface: svc0, comment: "cloudflared tren vps-mon -> nginx (nguoi dung qua Cloudflare Tunnel)" }
+  - { port: "80",  proto: tcp, from: "any", iface: tailscale0, comment: "quan tri vien qua VPN (chuyen huong sang HTTPS)" }
+  - { port: "443", proto: tcp, from: "any", iface: tailscale0, comment: "quan tri Nextcloud qua VPN (TLS tu tailscale cert)" }
+health_group: "Máy chủ"

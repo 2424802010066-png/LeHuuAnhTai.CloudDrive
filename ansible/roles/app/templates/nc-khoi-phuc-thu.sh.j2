@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# DIỄN TẬP KHÔI PHỤC: lấy bản sao lưu MỚI NHẤT từ vps-data, khôi phục ra thư mục tạm + CSDL tạm,
+# rồi đối chiếu với hệ thống đang chạy. Không đụng vào dữ liệu thật. Lê Hữu Anh Tài {{ mssv }}
+set -Eeuo pipefail
+set -a; . /etc/nc-backup/env; set +a
+DICH=/srv/khoi-phuc-thu
+t0=$(date +%s)
+rm -rf "$DICH"; mkdir -p "$DICH"
+echo "== 1) Bản sao lưu mới nhất trên kho vps-data"
+restic snapshots --latest 1 --compact
+echo "== 2) Khôi phục tệp ra $DICH"
+restic restore latest --target "$DICH"
+echo "== 3) Đối chiếu tệp người dùng (bỏ qua appdata/cache) giữa bản khôi phục và hệ thống đang chạy"
+cd /srv/nextcloud/html/data
+tong=0; khop=0
+while IFS= read -r -d '' f; do
+  tong=$((tong+1))
+  if cmp -s "$f" "$DICH/srv/nextcloud/html/data/$f"; then khop=$((khop+1)); else echo "  KHAC: $f"; fi
+done < <(find . -path './appdata_*' -prune -o -path '*/cache' -prune -o -type f -path './*/files/*' -print0)
+echo "   Tệp người dùng: $khop/$tong khớp từng byte"
+echo "== 4) Khôi phục CSDL vào một PostgreSQL TẠM (container dùng xong xóa)"
+docker rm -f pg-khoi-phuc >/dev/null 2>&1 || true
+docker run -d --name pg-khoi-phuc -e POSTGRES_PASSWORD=tam -e POSTGRES_USER={{ nc_db_user }} -e POSTGRES_DB={{ nc_db_name }} {{ postgres_image }} >/dev/null
+for i in $(seq 1 30); do docker exec pg-khoi-phuc pg_isready -q -U {{ nc_db_user }} && break; sleep 2; done
+sleep 2
+docker exec -i pg-khoi-phuc pg_restore -U {{ nc_db_user }} -d {{ nc_db_name }} --no-owner < "$DICH/srv/backup-staging/nextcloud-db.dump"
+dem_tam=$(docker exec pg-khoi-phuc psql -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_accounts")
+dem_that=$(docker run --rm --network host -e PGPASSWORD -e PGSSLMODE=require {{ postgres_image }} psql -h {{ vps.data.data }} -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_accounts")
+tep_tam=$(docker exec pg-khoi-phuc psql -U {{ nc_db_user }} -d {{ nc_db_name }} -tAc "SELECT count(*) FROM oc_filecache")
+echo "   Số tài khoản: bản khôi phục = $dem_tam, đang chạy = $dem_that"
+echo "   Số bản ghi oc_filecache trong bản khôi phục: $tep_tam"
+docker rm -f pg-khoi-phuc >/dev/null
+echo "== KẾT QUẢ: khôi phục + đối chiếu xong trong $(( $(date +%s)-t0 )) giây (RTO đo được cho dữ liệu hiện tại)"
+[ "$khop" -eq "$tong" ] && [ "$dem_tam" -eq "$dem_that" ] && echo "   => ĐẠT: dữ liệu khôi phục đầy đủ" || { echo "   => CHƯA ĐẠT"; exit 1; }

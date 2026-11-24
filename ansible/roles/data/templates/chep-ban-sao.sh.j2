@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Chép kho sao lưu sang vps-mon (bản sao thứ 2, máy khác) — rsync qua SSH, phía nhận bị giới hạn bằng rrsync
+set -uo pipefail
+t0=$(date +%s)
+if rsync -a --delete -e "ssh -i /root/.ssh/backupcopy_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+     /srv/backup/restic/ backupcopy@{{ vps.mon.data }}:/ ; then
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.backup_copy }} true "" "$(( $(date +%s)-t0 ))s"
+  echo "Da chep ban sao sang {{ vps.mon.name }} trong $(( $(date +%s)-t0 )) giay"
+else
+  rc=$?
+  /usr/local/bin/push-gatus.sh {{ gatus_keys.backup_copy }} false "rsync loi ma $rc"
+  exit $rc
+fi

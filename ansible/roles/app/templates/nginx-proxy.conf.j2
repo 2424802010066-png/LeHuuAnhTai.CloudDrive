@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+proxy_pass http://nextcloud_backend;
+proxy_http_version 1.1;
+proxy_set_header Connection "";
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+# GHI ĐÈ (không nối thêm) X-Forwarded-For -> người dùng không giả mạo được IP gửi vào Nextcloud
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Forwarded-Proto $xfp;
+proxy_set_header X-Forwarded-Host $host;
+add_header Strict-Transport-Security $hsts always;
+
+client_max_body_size 16G;
+client_body_buffer_size 512k;
+proxy_request_buffering off;
+proxy_buffering off;
+proxy_read_timeout 3600s;
+proxy_send_timeout 3600s;

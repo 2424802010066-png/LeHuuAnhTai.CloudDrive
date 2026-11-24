@@ -1,0 +1,65 @@
+# {{ ansible_managed }}
+# vps-app — Nextcloud — Lê Hữu Anh Tài {{ mssv }}
+# Nextcloud chỉ publish trên 127.0.0.1:8080 -> chỉ nginx trên chính máy này vào được.
+# Redis không publish cổng nào (chỉ nằm trong mạng nội bộ của compose).
+name: nextcloud
+services:
+  nextcloud:
+    image: {{ nextcloud_image }}
+    container_name: nextcloud
+    restart: unless-stopped
+    ports: ["127.0.0.1:8080:80"]
+    env_file: .env
+    environment:
+      POSTGRES_HOST: "{{ vps.data.data }}:5432"
+      POSTGRES_DB: "{{ nc_db_name }}"
+      POSTGRES_USER: "{{ nc_db_user }}"
+      PGSSLMODE: require                 # libpq: bắt buộc mã hóa TLS tới PostgreSQL
+      REDIS_HOST: redis
+      NEXTCLOUD_TRUSTED_DOMAINS: "{{ cloud_host }} {{ vps.app.service }} {{ inventory_hostname }}.{{ tailnet_suffix }} localhost"
+      TRUSTED_PROXIES: "{{ nc_docker_gateway }}"
+      APACHE_DISABLE_REWRITE_IP: "1"     # để Nextcloud tự xử lý X-Forwarded-For từ proxy tin cậy
+      OVERWRITECLIURL: "https://{{ cloud_host }}"
+      PHP_MEMORY_LIMIT: 1024M
+      PHP_UPLOAD_LIMIT: 16G
+      TZ: "{{ tz }}"
+    volumes:
+      - /srv/nextcloud/html:/var/www/html
+    depends_on: [redis]
+    networks: [ncnet]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost/status.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  cron:
+    image: {{ nextcloud_image }}
+    container_name: nextcloud-cron
+    restart: unless-stopped
+    entrypoint: /cron.sh               # tác vụ nền của Nextcloud chạy mỗi 5 phút
+    env_file: .env
+    environment:
+      PGSSLMODE: require
+      TZ: "{{ tz }}"
+    volumes:
+      - /srv/nextcloud/html:/var/www/html
+    depends_on: [nextcloud]
+    networks: [ncnet]
+
+  redis:
+    image: {{ redis_image }}
+    container_name: redis
+    restart: unless-stopped
+    # Redis chỉ làm bộ nhớ đệm + khóa tệp -> không cần lưu xuống đĩa
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_HOST_PASSWORD\" --save '' --appendonly no --maxmemory 256mb"]
+    env_file: .env
+    networks: [ncnet]
+
+networks:
+  ncnet:
+    ipam:
+      config:
+        - subnet: {{ nc_docker_subnet }}
+          gateway: {{ nc_docker_gateway }}

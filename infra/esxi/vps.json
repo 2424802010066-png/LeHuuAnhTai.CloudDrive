@@ -1,0 +1,42 @@
+{
+  "_ghi_chu": "Bảng máy ảo của đồ án — nguồn dữ liệu duy nhất cho script tạo VPS (Lê Hữu Anh Tài 2424802010066)",
+  "datastore": "ds-2424802010066",
+  "gateway": "192.168.119.2",
+  "dns": ["192.168.119.2", "1.1.1.1"],
+  "portgroups": {
+    "wan": "VM Network",
+    "svc": "VPS-Net-2424802010066",
+    "data": "Data-Net-2424802010066"
+  },
+  "vps": [
+    {
+      "ten": "vps-data-2424802010066", "vcpu": 2, "ram_mb": 2048, "os_gb": 20,
+      "dia_them_gb": [20, 40],
+      "vai_tro": "PostgreSQL 18 + kho sao lưu restic (rest-server)",
+      "nic": [
+        { "ten": "wan0",  "mang": "wan",  "mac": "00:50:56:24:22:01", "ip": "192.168.119.62/24", "gw": true },
+        { "ten": "data0", "mang": "data", "mac": "00:50:56:24:22:03", "ip": "192.168.250.22/24" }
+      ]
+    },
+    {
+      "ten": "vps-app-2424802010066", "vcpu": 2, "ram_mb": 4096, "os_gb": 20,
+      "dia_them_gb": [40],
+      "vai_tro": "Nextcloud 34 + Redis + nginx + cloudflared (dự phòng)",
+      "nic": [
+        { "ten": "wan0",  "mang": "wan",  "mac": "00:50:56:24:21:01", "ip": "192.168.119.61/24", "gw": true },
+        { "ten": "svc0",  "mang": "svc",  "mac": "00:50:56:24:21:02", "ip": "192.168.240.21/24" },
+        { "ten": "data0", "mang": "data", "mac": "00:50:56:24:21:03", "ip": "192.168.250.21/24" }
+      ]
+    },
+    {
+      "ten": "vps-mon-2424802010066", "vcpu": 1, "ram_mb": 1536, "os_gb": 30,
+      "dia_them_gb": [],
+      "vai_tro": "Gatus (status, cảnh báo) + cloudflared (chính) + bản sao lưu thứ 2 + Ansible",
+      "nic": [
+        { "ten": "wan0",  "mang": "wan",  "mac": "00:50:56:24:23:01", "ip": "192.168.119.63/24", "gw": true },
+        { "ten": "svc0",  "mang": "svc",  "mac": "00:50:56:24:23:02", "ip": "192.168.240.23/24" },
+        { "ten": "data0", "mang": "data", "mac": "00:50:56:24:23:03", "ip": "192.168.250.23/24" }
+      ]
+    }
+  ]
+}

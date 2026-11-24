@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Dọn bản sao lưu cũ theo chính sách giữ: {{ backup_keep }}
+# Chạy PHÍA MÁY CHỦ SAO LƯU vì máy dịch vụ chỉ có quyền append-only.
+set -euo pipefail
+export RESTIC_REPOSITORY=/srv/backup/restic/vps-app
+export RESTIC_PASSWORD_FILE=/etc/restic/vps-app.pass
+restic forget {{ backup_keep }} --prune
+restic check

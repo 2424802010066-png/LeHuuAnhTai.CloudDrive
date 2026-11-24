@@ -1,0 +1,17 @@
+// {{ ansible_managed }}
+// Tự cài bản vá bảo mật mỗi ngày; nếu cần khởi động lại thì làm trong cửa sổ bảo trì (SLA)
+Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}";
+        "${distro_id}:${distro_codename}-security";
+        "${distro_id}:${distro_codename}-updates";
+        "${distro_id}ESMApps:${distro_codename}-apps-security";
+        "${distro_id}ESM:${distro_codename}-infra-security";
+};
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Tailscale";
+        "origin=cloudflared";
+};
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ {'data': '03:10', 'app': '03:20', 'mon': '03:30'}[role_key] }}";
+Unattended-Upgrade::SyslogEnable "true";

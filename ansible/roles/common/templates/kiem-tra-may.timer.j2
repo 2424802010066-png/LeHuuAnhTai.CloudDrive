@@ -1,0 +1,10 @@
+[Unit]
+Description=Moi {{ health_push_interval }} kiem tra suc khoe may
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{ health_push_interval }}
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

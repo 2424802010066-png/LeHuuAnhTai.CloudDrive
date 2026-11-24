@@ -1,0 +1,5 @@
+# Tường lửa lớp 2 (ufw) trên vps-data — vùng dữ liệu, chỉ máy dịch vụ được vào.
+ufw_rules:
+  - { port: "5432", proto: tcp, from: "192.168.250.21", iface: data0, comment: "Nextcloud (vps-app) -> PostgreSQL, bat buoc TLS" }
+  - { port: "8000", proto: tcp, from: "192.168.250.21", iface: data0, comment: "vps-app -> rest-server (kho sao luu restic, append-only, TLS)" }
+health_group: "Máy chủ"

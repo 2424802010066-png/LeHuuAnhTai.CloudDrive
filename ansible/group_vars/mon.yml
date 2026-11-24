@@ -1,0 +1,8 @@
+# Tường lửa lớp 2 (ufw) trên vps-mon.
+ufw_rules:
+  - { port: "8080", proto: tcp, from: "192.168.250.21", iface: data0, comment: "vps-app day trang thai (sao luu, suc khoe) vao Gatus" }
+  - { port: "8080", proto: tcp, from: "192.168.250.22", iface: data0, comment: "vps-data day trang thai (CSDL, sao luu) vao Gatus" }
+  - { port: "8080", proto: tcp, from: "192.168.240.21", iface: svc0, comment: "cloudflared du phong tren vps-app -> trang status" }
+  - { port: "8080", proto: tcp, from: "any", iface: tailscale0, comment: "quan tri vien xem Gatus qua VPN" }
+  - { port: "22",   proto: tcp, from: "192.168.250.22", iface: data0, comment: "vps-data chep ban sao sao luu (user backupcopy, rrsync)" }
+health_group: "Máy chủ"

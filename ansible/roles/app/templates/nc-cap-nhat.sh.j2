@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Cập nhật bản vá Nextcloud/Redis (cùng nhánh {{ nextcloud_image }}) — Chủ nhật 02:30, SAU bản sao lưu 02:00.
+# Image tự chạy "occ upgrade" khi phát hiện phiên bản mới. Lê Hữu Anh Tài {{ mssv }}
+set -euo pipefail
+cd /opt/nextcloud
+truoc=$(docker exec -u www-data nextcloud php occ status --output=json 2>/dev/null | jq -r .versionstring || true)
+docker compose pull --quiet
+docker compose up -d
+sleep 60
+docker exec -u www-data nextcloud php occ db:add-missing-indices
+sau=$(docker exec -u www-data nextcloud php occ status --output=json | jq -r .versionstring)
+echo "Nextcloud: $truoc -> $sau"
+docker image prune -f >/dev/null

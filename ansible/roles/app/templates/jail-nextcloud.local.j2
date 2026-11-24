@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# Chặn IP đăng nhập Nextcloud sai >= 5 lần / 10 phút. Người dùng đi qua Cloudflare Tunnel nên
+# KHÔNG chặn bằng iptables được (gói tin thực tế đến từ cloudflared) -> chặn ở nginx theo IP thật.
+[nextcloud]
+enabled  = true
+backend  = auto
+port     = 80,443
+protocol = tcp
+filter   = nextcloud
+logpath  = /srv/nextcloud/html/data/nextcloud.log
+maxretry = 5
+findtime = 10m
+bantime  = 1h
+action   = nginx-deny

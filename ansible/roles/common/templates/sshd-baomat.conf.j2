@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# SSH an toàn — {{ inventory_hostname }} (Lê Hữu Anh Tài - {{ mssv }})
+# Chỉ xác thực bằng khóa công khai, tắt hẳn mật khẩu
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+# Cấm root đăng nhập trực tiếp: quản trị bằng tài khoản riêng + sudo
+PermitRootLogin no
+# Chỉ các tài khoản này được SSH; deploy chỉ từ control node vps-mon
+AllowUsers {{ admins | map(attribute='name') | join(' ') }} {{ deploy_user }}@{{ vps.mon.data }}{% if role_key == 'mon' %} backupcopy@{{ vps.data.data }}{% endif %}
+
+MaxAuthTries 3
+LoginGraceTime 30
+MaxStartups 10:30:60
+ClientAliveInterval 300
+ClientAliveCountMax 2
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no
+# Quản trị viên được chuyển tiếp cổng cục bộ (ssh -L) để kiểm thử dịch vụ nội bộ
+Match User {{ admins | map(attribute='name') | join(',') }}
+    AllowTcpForwarding local

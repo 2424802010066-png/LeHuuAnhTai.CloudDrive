@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+[DEFAULT]
+# Không bao giờ chặn chính máy mình và control node Ansible
+ignoreip = 127.0.0.1/8 ::1 {{ vps.mon.data }}
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+banaction = ufw
+
+[sshd]
+enabled = true
+mode    = aggressive
+
+# Kẻ bị chặn nhiều lần trong 1 ngày -> chặn 1 tuần
+[recidive]
+enabled  = true
+backend  = auto
+logpath  = /var/log/fail2ban.log
+bantime  = 1w
+findtime = 1d
+maxretry = 3
