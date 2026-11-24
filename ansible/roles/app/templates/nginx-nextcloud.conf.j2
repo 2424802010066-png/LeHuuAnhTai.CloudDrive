@@ -43,8 +43,7 @@ server {
 
 # Đường QUẢN TRỊ: chỉ tới được qua VPN Tailscale (ufw chỉ mở 443 trên tailscale0)
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;     # nginx 1.24 của Ubuntu 24.04 chưa có directive "http2 on;" (từ 1.25.1)
     server_name {{ inventory_hostname }}.{{ tailnet_suffix }};
     access_log /var/log/nginx/nextcloud-admin.access.log doan;
 
