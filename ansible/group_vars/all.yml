@@ -8,7 +8,7 @@ tz: "Asia/Ho_Chi_Minh"
 
 # Tên miền id.vn của nhóm trưởng. Chưa có tên miền thì để domain_ready: false
 # -> bỏ qua Cloudflare Tunnel và các phép kiểm tra công khai trong Gatus.
-domain: "lehuuanhtai.id.vn"
+domain: "lehuuanhtai2424802010066.id.vn"
 domain_ready: false
 cloud_host: "cloud.{{ domain }}"
 status_host: "status.{{ domain }}"
