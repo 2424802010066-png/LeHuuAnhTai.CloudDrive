@@ -2,9 +2,20 @@
 #   người dùng -> Cloudflare -> Tunnel -> nginx :80 (vps-app) -> Nextcloud (Apache, 127.0.0.1:8080)
 #   quản trị viên -> Tailscale -> nginx :443 (chứng chỉ tailscale cert) -> Nextcloud
 
-- name: Định dạng + gắn đĩa dữ liệu người dùng (sdb -> /srv)
+- name: Tìm đĩa dữ liệu theo vị trí SCSI 0:1 (tên sda/sdb KHÔNG cố định) + chốt chặn không đụng đĩa hệ điều hành
+  ansible.builtin.shell: |
+    set -e
+    d=$(readlink -f /dev/disk/by-path/*-scsi-0:0:1:0)
+    [ "$(lsblk -no NAME "$d" | wc -l)" -eq 1 ] || { echo "$d co phan vung -> khong phai dia du lieu, DUNG" >&2; exit 1; }
+    m=$(findmnt -no TARGET -S "$d" || true)
+    [ -z "$m" ] || [ "$m" = "/srv" ] || { echo "$d dang gan o $m, DUNG" >&2; exit 1; }
+    echo "$d"
+  register: dia_nc
+  changed_when: false
+
+- name: Định dạng đĩa dữ liệu người dùng (ext4, nhãn NCDATA)
   community.general.filesystem:
-    dev: /dev/sdb
+    dev: "{{ dia_nc.stdout }}"
     fstype: ext4
     opts: "-L NCDATA"
 

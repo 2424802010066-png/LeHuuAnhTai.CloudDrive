@@ -3,14 +3,26 @@
 #   - rest-server: kho sao lưu restic, append-only (máy dịch vụ không xóa được bản sao lưu)
 #   - dọn bản sao lưu cũ hằng tuần + chép bản sao thứ hai sang vps-mon hằng đêm
 
-- name: Định dạng 2 đĩa dữ liệu (sdb = CSDL, sdc = sao lưu)
-  community.general.filesystem:
-    dev: "{{ item.dev }}"
-    fstype: ext4
-    opts: "-L {{ item.label }}"
+- name: Tìm 2 đĩa dữ liệu theo vị trí SCSI (0:1 = CSDL, 0:2 = sao lưu) + chốt chặn không đụng đĩa hệ điều hành
+  ansible.builtin.shell: |
+    set -e
+    d=$(readlink -f /dev/disk/by-path/*-scsi-0:0:{{ item.target }}:0)
+    [ "$(lsblk -no NAME "$d" | wc -l)" -eq 1 ] || { echo "$d co phan vung -> khong phai dia du lieu, DUNG" >&2; exit 1; }
+    m=$(findmnt -no TARGET -S "$d" || true)
+    [ -z "$m" ] || [ "$m" = "{{ item.path }}" ] || { echo "$d dang gan o $m, DUNG" >&2; exit 1; }
+    echo "$d"
   loop:
-    - { dev: /dev/sdb, label: PGDATA }
-    - { dev: /dev/sdc, label: BACKUP }
+    - { target: 1, path: /srv/postgres }
+    - { target: 2, path: /srv/backup }
+  register: dia_data
+  changed_when: false
+
+- name: Định dạng 2 đĩa dữ liệu (ext4, nhãn PGDATA / BACKUP)
+  community.general.filesystem:
+    dev: "{{ item.0.stdout }}"
+    fstype: ext4
+    opts: "-L {{ item.1 }}"
+  loop: "{{ dia_data.results | zip(['PGDATA', 'BACKUP']) | list }}"
 
 - name: Gắn đĩa vào /srv/postgres và /srv/backup
   ansible.posix.mount:

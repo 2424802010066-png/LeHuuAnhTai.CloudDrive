@@ -21,8 +21,8 @@ for rs in sshServer vSphereClient webAccess; do
   esxcli network firewall ruleset allowedip list -r "$rs" | grep -q "$LAPTOP" || \
     esxcli network firewall ruleset allowedip add -r "$rs" -i "$LAPTOP"
 done
-echo "   Tắt các dịch vụ không dùng (CIM/SLP, SNMP)"
-for rs in CIMSLP CIMHttpServer CIMHttpsServer snmp; do
+echo "   Tắt các luật/dịch vụ không dùng (CIM/SLP, SNMP, FT, VUM, WOL, DVS, daemon Dell)"
+for rs in CIMSLP CIMHttpServer CIMHttpsServer snmp faultTolerance updateManager WOL DVSSync daemon-dellosname; do
   esxcli network firewall ruleset set -r "$rs" -e false 2>/dev/null || true
 done
 /etc/init.d/slpd stop >/dev/null 2>&1 || true
