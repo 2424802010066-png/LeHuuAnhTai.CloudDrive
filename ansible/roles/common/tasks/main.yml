@@ -243,6 +243,12 @@
   community.general.ufw:
     state: enabled
     logging: "low"
+  async: 60
+  poll: 5
+
+# Bật ufw lần đầu làm treo kết nối SSH dùng chung (ControlMaster) đang mở -> mở kết nối mới
+- name: Làm mới kết nối SSH sau khi bật tường lửa
+  ansible.builtin.meta: reset_connection
 
 # ---- Đẩy tình trạng máy về Gatus mỗi phút ----
 - name: Script đẩy trạng thái + script kiểm tra sức khỏe máy
