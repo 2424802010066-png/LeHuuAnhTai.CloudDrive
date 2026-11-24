@@ -1,0 +1,6 @@
+# Mọi tệp văn bản dùng LF (chạy trên Linux)
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.docx binary
+*.pdf binary
