@@ -138,6 +138,14 @@
 - name: Áp cấu hình nginx/fail2ban ngay (không đợi cuối play)
   ansible.builtin.meta: flush_handlers
 
+- name: Kiểm tra jail nextcloud của fail2ban THẬT SỰ đang chạy (tránh lỗi im lặng)
+  ansible.builtin.command: fail2ban-client status nextcloud
+  register: f2b_nc
+  changed_when: false
+  retries: 5
+  delay: 3
+  until: f2b_nc.rc == 0
+
 # ---- Docker Compose: Nextcloud + Redis + cron ----
 - name: Chứng chỉ của PostgreSQL (vps-data) làm "root CA" để xác minh máy chủ CSDL
   ansible.builtin.copy:
