@@ -135,6 +135,9 @@
     mode: "0644"
   notify: restart fail2ban
 
+- name: Áp cấu hình nginx/fail2ban ngay (không đợi cuối play)
+  ansible.builtin.meta: flush_handlers
+
 # ---- Docker Compose: Nextcloud + Redis + cron ----
 - name: Chứng chỉ của PostgreSQL (vps-data) làm "root CA" để xác minh máy chủ CSDL
   ansible.builtin.copy:
